@@ -1,0 +1,16 @@
+{
+  "name": "cc-usage-hud",
+  "owner": {
+    "name": "Bing2000me"
+  },
+  "metadata": {
+    "description": "cc-usage-hud: a Claude Code mod showing cache hit rate, rate limits, cost and TPS above the prompt."
+  },
+  "plugins": [
+    {
+      "name": "cc-usage-hud",
+      "source": "./",
+      "description": "A chip bar above the prompt: cache hit rate, rate limits, cost and TPS."
+    }
+  ]
+}
