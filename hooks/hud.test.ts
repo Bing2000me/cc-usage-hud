@@ -168,7 +168,7 @@ test('the terminal band shows the chips, and a pressed chip pins its card', asyn
   await ui.unmount()
 })
 
-test('the desktop band shows the chips, each with a card that opens above them', async ($, on) => {
+test('the desktop band shows the chips, each opening one line of detail', async ($, on) => {
   mock.clock(on, { now: T0 })
   await oneStep($, on)
   const band = (bodyColumns: number, maxRows = 12) =>
@@ -176,20 +176,20 @@ test('the desktop band shows the chips, each with a card that opens above them',
 
   const wide = await band(120)
   expect(await wide.find({ type: 'Text', text: '3.1K tok · 缓存命中 80%' })).toBeDefined()
-  const svgs = await wide.findAll({ type: 'Svg' })
-  expect(svgs).toHaveLength(8)
-  const card = svgs.find(s => String(s.props.alt).startsWith('Token 用量'))
-  expect(String(card?.props.source)).toContain('3,060 tok')
-  expect((await wide.find({ key: 'card-tokens' }))?.props.display).toBe('none')
+  // Icons in the hidden flow copy and the live copy, and the page layer.
+  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(9)
+  expect((await wide.find({ key: 'strip-tokens' }))?.props.display).toBe('none')
+  expect(await wide.find({ type: 'Text', text: '缓存读取' })).toBeDefined()
+  expect(await wide.find({ type: 'Text', text: '按 API 标价折算' })).toBeDefined()
   await wide.unmount()
 
   const mid = await band(70)
   expect(await mid.find({ type: 'Text', text: '3.1K · 命中 80%' })).toBeDefined()
   await mid.unmount()
 
-  // A band too short for any card draws the chips alone.
-  const short = await band(120, 4)
-  expect(await short.findAll({ type: 'Svg' })).toHaveLength(4)
+  // A one-row band has no room for a detail line: the chips alone.
+  const short = await band(120, 1)
+  expect(await short.find({ type: 'Text', text: '缓存读取' })).toBe(undefined)
   await short.unmount()
 })
 

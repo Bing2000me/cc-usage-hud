@@ -1,11 +1,7 @@
-// The desktop's drawings: chip icons and the hover cards, as SVG markup.
+// The desktop's drawings: chip icons, detail-line meters and the page layer, as SVG markup.
 // Colors follow the system appearance through prefers-color-scheme.
 
-import type { Card, Icon, Tone } from './model'
-
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-const FONT = `-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif`
+import type { Icon, Tone } from './model'
 
 const PALETTE = `
   :root { --bg:#2a2a2d; --edge:rgba(255,255,255,.10); --fg:#ededf0; --mute:#9d9da3; --line:rgba(255,255,255,.08);
@@ -50,6 +46,16 @@ const glyph = (icon: Icon, ring: number | null | undefined): string => {
   }
 }
 
+/**
+ * The desktop page's own background, in both appearances (sampled from the app,
+ * in sRGB): laid under the band so its gray tray disappears and the chips and
+ * cards sit on the page itself.
+ */
+export const PAGE_SVG =
+  `<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1600">` +
+  `<style>rect{fill:#fcfcfb}@media (prefers-color-scheme: dark){rect{fill:#151515}}</style>` +
+  `<rect width="4000" height="1600"/></svg>`
+
 /** A chip's icon at `size` CSS pixels. */
 export const iconSvg = (icon: Icon, size: number, ring?: number | null): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">` +
@@ -57,98 +63,14 @@ export const iconSvg = (icon: Icon, size: number, ring?: number | null): string 
   `<g fill="none" stroke="var(--icon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
   `${glyph(icon, ring)}</g></svg>`
 
-// The card's geometry, in CSS pixels: two columns, so it stays short enough
-// to open inside the band above the prompt without pushing the chips away.
-const W = 440
-const M = 6 // room for the shadow
-const PAD = 14
-const GAP = 28
-const ROW = 24
-const METER = 58
-
-export type CardDrawing = { source: string; width: number; height: number }
-
-export const cardSvg = (card: Card): CardDrawing => {
-  const x0 = M + PAD
-  const x1 = M + W - PAD
-  const colW = (x1 - x0 - GAP) / 2
-  const colX = (i: number) => x0 + (i % 2) * (colW + GAP)
-  const parts: string[] = []
-  let y = M + PAD
-
-  // Title: icon, name, and a figure (or a quiet note) at the right.
-  parts.push(
-    `<g transform="translate(${x0} ${y - 1}) scale(0.72)" fill="none" stroke="var(--fg)" stroke-width="2"` +
-      ` stroke-linecap="round" stroke-linejoin="round">${glyph(card.icon, null)}</g>`,
-  )
-  parts.push(`<text class="title" x="${x0 + 25}" y="${y + 13}">${esc(card.title)}</text>`)
-  if (card.right) {
-    const cls = card.isRightQuiet ? 'note r' : 'title r'
-    parts.push(`<text class="${cls}" x="${x1}" y="${y + 13}">${esc(card.right)}</text>`)
-  }
-  y += 26
-  parts.push(`<line x1="${x0}" x2="${x1}" y1="${y + 0.5}" y2="${y + 0.5}" stroke="var(--line)"/>`)
-  y += 4
-
-  // Figures, two to a row.
-  card.rows.forEach((row, i) => {
-    const base = y + Math.floor(i / 2) * ROW + 18
-    const x = colX(i)
-    parts.push(`<text class="label" x="${x}" y="${base}">${esc(row.label)}</text>`)
-    parts.push(
-      `<text class="value r" x="${x + colW}" y="${base}" style="fill:${TONE[row.tone ?? 'normal']}">${esc(row.value)}</text>`,
-    )
-  })
-  y += Math.ceil(card.rows.length / 2) * ROW
-
-  if (card.rows.length === 0 && card.meters.length === 0 && card.empty) {
-    parts.push(`<text class="label" x="${x0}" y="${y + 18}">${esc(card.empty)}</text>`)
-    y += ROW
-  }
-
-  // Meters, side by side.
-  card.meters.forEach((m, i) => {
-    const top = y + Math.floor(i / 2) * METER
-    const x = colX(i)
-    parts.push(`<text class="label" x="${x}" y="${top + 18}">${esc(m.label)}</text>`)
-    parts.push(`<text class="value r" x="${x + colW}" y="${top + 18}" style="fill:${TONE[m.tone]}">${esc(m.value)}</text>`)
-    parts.push(`<rect x="${x}" y="${top + 26}" width="${colW}" height="6" rx="3" fill="var(--track)"/>`)
-    if (m.pct !== null && m.pct > 0) {
-      const fw = Math.max(6, Math.min(colW, (m.pct / 100) * colW))
-      parts.push(`<rect x="${x}" y="${top + 26}" width="${fw.toFixed(1)}" height="6" rx="3" fill="${TONE[m.tone]}"/>`)
-    }
-    if (m.note) parts.push(`<text class="note" x="${x}" y="${top + 48}">${esc(m.note)}</text>`)
-  })
-  y += Math.ceil(card.meters.length / 2) * METER
-
-  if (card.foot.length > 0) {
-    y += 6
-    parts.push(`<line x1="${x0}" x2="${x1}" y1="${y + 0.5}" y2="${y + 0.5}" stroke="var(--line)"/>`)
-    parts.push(`<text class="note" x="${x0}" y="${y + 18}">${esc(card.foot.join(' · '))}</text>`)
-    y += 22
-  }
-
-  y += PAD - 4
-  const h = y - M
-  const width = W + 2 * M
-  const height = h + 2 * M
-
-  const source =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-    `<style>${PALETTE}
-      text { font-family: ${FONT}; font-variant-numeric: tabular-nums; }
-      .title { font-size: 13.5px; font-weight: 600; fill: var(--fg); }
-      .label { font-size: 12.5px; fill: var(--mute); }
-      .value { font-size: 12.5px; fill: var(--fg); }
-      .note { font-size: 11px; fill: var(--mute); }
-      .r { text-anchor: end; }
-    </style>` +
-    `<defs><filter id="sh" x="-5%" y="-10%" width="110%" height="130%">` +
-    `<feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="#000" flood-opacity=".16"/></filter></defs>` +
-    `<rect x="${M + 0.5}" y="${M + 0.5}" width="${W - 1}" height="${h - 1}" rx="10" fill="var(--bg)"` +
-    ` stroke="var(--edge)" filter="url(#sh)"/>` +
-    parts.join('') +
+/** A short meter for a detail line: `pct` of `width` CSS pixels filled, in its tone. */
+export const meterSvg = (pct: number | null, tone: Tone, width: number): string => {
+  const fill = pct === null || pct <= 0 ? 0 : Math.max(3, Math.min(width, (pct / 100) * width))
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="6" viewBox="0 0 ${width} 6">` +
+    `<style>${PALETTE}</style>` +
+    `<rect width="${width}" height="6" rx="3" fill="var(--track)"/>` +
+    (fill > 0 ? `<rect width="${fill.toFixed(1)}" height="6" rx="3" fill="${TONE[tone]}"/>` : '') +
     `</svg>`
-
-  return { source, width, height }
+  )
 }

@@ -4,7 +4,8 @@ import type { FsEntry, Register, RenderNode, TurnUsage } from 'claude-code'
 import type { HudCard, HudLimit } from '../types'
 import * as F from './format'
 import { buildView, ORDER, pickTier } from './model'
-import { cardSvg, iconSvg } from './svg'
+import type { Strip, StripItem, Tone } from './model'
+import { iconSvg, meterSvg, PAGE_SVG } from './svg'
 import { Ledger, parseJson, serial } from './ledger'
 import type { LedgerFile, LimitsCache } from './ledger'
 import { EMPTY_SNAP, EMPTY_STATS, EMPTY_TOTALS } from './state'
@@ -20,12 +21,15 @@ const tickAtom = atom({ plugin: 'cc-usage-hud', key: 'tick' } as const, 0)
 const USER_WAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const LIMITS_WRITE_EVERY_MS = 30_000
 const CARD_WIDTH = 40
-// The desktop band: CSS pixels per row, and the smallest a card may be drawn.
-const DESKTOP_ROW_PX = 19
-const MIN_CARD_SCALE = 0.75
+// A detail line's meters, in CSS pixels and in the cells they take; cells between figures.
+const METER_PX = 36
+const METER_CELLS = 5
+const STRIP_GAP = 3
 // The desktop's proportional text runs narrower than the cells cellWidth counts.
 const DESKTOP_TEXT_FIT = 0.88
 const CHIP_GAP = 2
+// Cells the page layer reaches past the band's body on every side, over its tray.
+const PAGE_BLEED = 6
 // Cells a desktop chip adds to its label: the icon, its gap and the padding.
 const CHIP_CHROME = 5
 // Mid-gray at low alpha reads as a pill on both light and dark backgrounds.
@@ -269,9 +273,10 @@ export const register: Register = on => {
     return { result: `cc-usage-hud reloaded; pinned: ${pin ?? 'none'}` }
   })
 
-  // Desktop: a row of chips in the band above the prompt. Hovering a chip opens its card
-  // in the band, above the chips; the band's own region clips anything drawn outside it,
-  // so the card is laid out in the band and sized to fit, which keeps the chips in place.
+  // Desktop: a row of chips in the band above the prompt, drawn on the page's own
+  // background. Hovering a chip opens one line of detail right above it: the band
+  // clips anything outside it and grows with what it holds, so one line is the most
+  // it takes from the conversation, and the chips never move under the pointer.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || e.surface !== 'desktop') return next(e)
     const { Box, Text, Svg } = $.ui.resolve(e)
@@ -283,56 +288,105 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const view = buildView(s, snap, totals, now, ledger.tzMin)
 
-    const tier = pickTier(view.chips, e.props.bodyColumns, label => F.cellWidth(label) * DESKTOP_TEXT_FIT + CHIP_CHROME)
-    // Room the card may take: the band's rows less the chips' own.
-    const roomPx = (e.props.maxRows - 1) * DESKTOP_ROW_PX - 4
+    const cols = e.props.bodyColumns
+    const fit = (text: string) => F.cellWidth(text) * DESKTOP_TEXT_FIT
+    const tier = pickTier(view.chips, cols, label => fit(label) + CHIP_CHROME)
+    const hasRoom = e.props.maxRows >= 2
 
-    const cards = view.cards.map(card => {
-      const drawing = cardSvg(card)
-      const scale = Math.min(1, roomPx / drawing.height)
-      if (scale < MIN_CARD_SCALE) return <Box key={`card-${card.id}`} display="none" />
-      const isPinned = pinned === card.id
-      const scope = `hud-${card.id}`
-      const alt = [card.title, card.right, ...card.rows.map(r => `${r.label} ${r.value}`)].filter(Boolean).join(', ')
-      return (
+    // A detail line keeps its notes while they fit, then its leading figures.
+    const fitStrip = (strip: Strip) => {
+      const itemWidth = (it: StripItem, withNote: boolean) =>
+        fit(it.label) + 1 + fit(it.value) + (it.pct !== undefined ? METER_CELLS + 1 : 0) +
+        (withNote && it.note ? 1 + fit(it.note) : 0)
+      const width = (items: StripItem[], withNote: boolean) =>
+        items.reduce((w, it) => w + itemWidth(it, withNote) + STRIP_GAP, 0) +
+        (withNote && strip.note ? fit(strip.note) : 0)
+      if (width(strip.items, true) <= cols) return { items: strip.items, withNote: true }
+      let items = strip.items
+      while (items.length > 1 && width(items, false) > cols) items = items.slice(0, -1)
+      return { items, withNote: false }
+    }
+
+    const tone = (t: Tone | undefined) => (t === 'bad' ? 'error' : t === 'warn' ? 'warning' : undefined)
+
+    // Drawn twice: once in the flow, where it sizes the band and lies hidden under the
+    // page layer, and once on top of that layer, where it is seen and hovered. Both
+    // copies share the hover groups, so they open and close together.
+    const content = (isLive: boolean) => {
+      const tag = isLive ? '' : '-flow'
+      const strips = view.strips.map(strip => {
+        const scope = `hud-${strip.id}`
+        if (!hasRoom) return <Box key={`strip-${strip.id}${tag}`} display="none" />
+        const { items, withNote } = fitStrip(strip)
+        const parts: RenderNode[] = items.map(it => {
+          const bits: RenderNode[] = [<Text dimColor>{it.label}</Text>]
+          if (it.pct !== undefined)
+            bits.push(
+              <Svg
+                source={meterSvg(it.pct, it.tone ?? 'ok', METER_PX)}
+                alt={`${it.label} ${it.value}`}
+                width={METER_PX}
+                height={6}
+              />,
+            )
+          bits.push(<Text color={tone(it.tone)}>{it.value}</Text>)
+          if (withNote && it.note) bits.push(<Text dimColor>{it.note}</Text>)
+          return (
+            <Box flexDirection="row" alignItems="center" columnGap={1}>
+              {bits}
+            </Box>
+          )
+        })
+        if (withNote && strip.note) parts.push(<Text dimColor>{strip.note}</Text>)
+        if (parts.length === 0) parts.push(<Text dimColor>—</Text>)
+        const isPinned = pinned === strip.id
+        return (
+          <Box
+            key={`strip-${strip.id}${tag}`}
+            display={isPinned ? 'flex' : 'none'}
+            hover={isPinned ? { scope } : { scope, display: 'flex' }}
+            flexDirection="row"
+            justifyContent="center"
+            alignItems="center"
+            columnGap={STRIP_GAP}
+          >
+            {parts}
+          </Box>
+        )
+      })
+      const chips = view.chips.map(chip => (
         <Box
-          key={`card-${card.id}`}
-          display={isPinned ? 'flex' : 'none'}
-          hover={isPinned ? { scope } : { scope, display: 'flex' }}
+          key={`chip-${chip.id}${tag}`}
           flexDirection="row"
-          justifyContent="center"
+          alignItems="center"
+          columnGap={1}
+          paddingX={1}
+          hover={isLive ? { scope: `hud-${chip.id}`, backgroundColor: CHIP_HOVER } : { scope: `hud-${chip.id}` }}
         >
-          <Svg
-            source={drawing.source}
-            alt={alt}
-            width={Math.round(drawing.width * scale)}
-            height={Math.round(drawing.height * scale)}
-          />
+          <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={chip.labels[tier]} width={14} height={14} />
+          <Text dimColor hover={{ scope: `hud-${chip.id}`, dimColor: false }} wrap="truncate-end">
+            {chip.labels[tier]}
+          </Text>
+        </Box>
+      ))
+      return (
+        <Box flexDirection="column">
+          {strips}
+          <Box flexDirection="row" justifyContent="center" columnGap={1}>
+            {chips}
+          </Box>
         </Box>
       )
-    })
-
-    const chips = view.chips.map(chip => (
-      <Box
-        key={`chip-${chip.id}`}
-        flexDirection="row"
-        alignItems="center"
-        columnGap={1}
-        paddingX={1}
-        hover={{ scope: `hud-${chip.id}`, backgroundColor: CHIP_HOVER }}
-      >
-        <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={chip.labels[tier]} width={14} height={14} />
-        <Text dimColor hover={{ scope: `hud-${chip.id}`, dimColor: false }} wrap="truncate-end">
-          {chip.labels[tier]}
-        </Text>
-      </Box>
-    ))
+    }
 
     return (
       <Box flexDirection="column">
-        {cards}
-        <Box flexDirection="row" justifyContent="center" columnGap={1}>
-          {chips}
+        {content(false)}
+        <Box position="absolute" top={-PAGE_BLEED} left={-PAGE_BLEED} right={-PAGE_BLEED} bottom={-PAGE_BLEED}>
+          <Svg source={PAGE_SVG} alt="page" width={4000} height={1600} />
+        </Box>
+        <Box position="absolute" left={0} right={0} bottom={0} flexDirection="column">
+          {content(true)}
         </Box>
       </Box>
     )
