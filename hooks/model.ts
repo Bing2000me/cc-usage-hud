@@ -25,12 +25,7 @@ export type Card = {
 /** A chip's label at three widths: full, shorter, shortest. */
 export type Chip = { id: HudCard; icon: Icon; labels: [string, string, string]; ring?: number | null }
 
-/** One figure of a chip's detail line. */
-export type StripItem = { label: string; value: string; tone?: Tone; pct?: number | null; note?: string }
-/** The line a chip opens on the desktop: its figures, and a closing note. */
-export type Strip = { id: HudCard; items: StripItem[]; note?: string }
-
-export type View = { chips: Chip[]; cards: Card[]; strips: Strip[] }
+export type View = { chips: Chip[]; cards: Card[] }
 
 export const ORDER: HudCard[] = ['stats', 'tokens', 'limits', 'cost']
 
@@ -165,56 +160,5 @@ export const buildView = (
     },
   ]
 
-  const strips: Strip[] = [
-    {
-      id: 'stats',
-      items: [
-        { label: '模型用时', value: F.fmtDur(s.modelMs) },
-        { label: '工具调用', value: F.fmtDur(s.toolMs) },
-        { label: '首 token', value: s.ttftN > 0 ? F.fmtDur(s.ttftMs / s.ttftN) : '—' },
-        { label: '输出', value: tpsText(mainTps), note: s.lastTps === null ? undefined : `最近 ${Math.round(s.lastTps)}` },
-        ...(s.subSteps > 0 ? [{ label: '子代理', value: `${s.subSteps} 步 · ${tpsText(subTps)}` }] : []),
-      ],
-    },
-    {
-      id: 'tokens',
-      items: [
-        { label: '未缓存', value: F.fmtTok(s.input) },
-        { label: '缓存写入', value: F.fmtTok(s.cacheWrite) },
-        { label: '缓存读取', value: F.fmtTok(s.cacheRead) },
-        { label: '输出', value: F.fmtTok(s.output) },
-      ],
-    },
-    {
-      id: 'limits',
-      items: snap.limits.map(l => {
-        const old = isOld(l.resetsAt)
-        return {
-          label: F.limitLabel(l.kind),
-          value: old ? '—' : `${l.percentUsed}%`,
-          tone: old ? 'dim' : toneOf(l.percentUsed),
-          pct: old ? null : l.percentUsed,
-          note: F.fmtReset(l.resetsAt, now, tzMin),
-        }
-      }),
-      note:
-        snap.limits.length === 0
-          ? '暂无读数 · 本会话首次响应后显示'
-          : snap.limitsStale && snap.limitsAt !== null
-            ? `上次读数 · ${F.fmtAgo(now - snap.limitsAt)}`
-            : undefined,
-    },
-    {
-      id: 'cost',
-      items: [
-        { label: '本会话', value: F.fmtUsd(snap.costUsd ?? 0) },
-        { label: '今日', value: F.fmtUsd(totals.today) },
-        { label: '本周', value: F.fmtUsd(totals.week) },
-        { label: '本月', value: F.fmtUsd(totals.month) },
-      ],
-      note: `按 API 标价折算${totals.since ? ` · 自 ${totals.since.slice(5).replace('-', '/')} 起` : ''}`,
-    },
-  ]
-
-  return { chips, cards, strips }
+  return { chips, cards }
 }

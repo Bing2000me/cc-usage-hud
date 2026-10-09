@@ -1,4 +1,4 @@
-// The desktop's drawings: chip icons, detail-line meters and the page layer, as SVG markup.
+// The desktop's drawings: chip icons, the page layer and the panels, as SVG markup.
 // Colors follow the system appearance through prefers-color-scheme.
 
 import type { Card, Icon, Tone } from './model'
@@ -56,6 +56,10 @@ export const PAGE_SVG =
   `<style>rect{fill:#fcfcfb}@media (prefers-color-scheme: dark){rect{fill:#151515}}</style>` +
   `<rect width="4000" height="1600"/></svg>`
 
+/** Empty room `height` CSS pixels tall: what nudges a row by less than a cell. */
+export const spacerSvg = (height: number) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="${height}" viewBox="0 0 1 ${height}"></svg>`
+
 /** A chip's icon at `size` CSS pixels. */
 export const iconSvg = (icon: Icon, size: number, ring?: number | null): string =>
   `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">` +
@@ -63,37 +67,25 @@ export const iconSvg = (icon: Icon, size: number, ring?: number | null): string 
   `<g fill="none" stroke="var(--icon)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` +
   `${glyph(icon, ring)}</g></svg>`
 
-/** A short meter for a detail line: `pct` of `width` CSS pixels filled, in its tone. */
-export const meterSvg = (pct: number | null, tone: Tone, width: number): string => {
-  const fill = pct === null || pct <= 0 ? 0 : Math.max(3, Math.min(width, (pct / 100) * width))
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="6" viewBox="0 0 ${width} 6">` +
-    `<style>${PALETTE}</style>` +
-    `<rect width="${width}" height="6" rx="3" fill="var(--track)"/>` +
-    (fill > 0 ? `<rect width="${fill.toFixed(1)}" height="6" rx="3" fill="${TONE[tone]}"/>` : '') +
-    `</svg>`
-  )
-}
-
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 const FONT = `-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif`
 
 export type Drawing = { source: string; width: number; height: number }
 
-// The panel a chip's press opens, in CSS pixels: its cards side by side,
-// set the way the desktop's own usage popover is (gray headings, dark
-// labels, gray figures, blue meters).
-const PANEL_W = 720
+// The panel a chip's press opens, in CSS pixels: its cards side by side
+// (one, as the desktop opens them), set the way the desktop's own usage
+// popover is: gray headings, dark labels, gray figures, blue meters.
+const PCOL = 230
 const PM = 6 // room for the shadow
 const PPAD = 16
 const PGAP = 32
 const PROW = 25
 const PMETER = 40
 
-export const panelSvg = (cards: Card[]): Drawing => {
+export const panelSvg = (cards: Card[], colW = PCOL): Drawing => {
   const n = Math.max(1, cards.length)
-  const colW = (PANEL_W - 2 * PPAD - (n - 1) * PGAP) / n
+  const panelW = 2 * PPAD + n * colW + (n - 1) * PGAP
   const top = PM + PPAD
   const parts: string[] = []
   let bottom = top
@@ -131,7 +123,7 @@ export const panelSvg = (cards: Card[]): Drawing => {
       return `<line x1="${x + 0.5}" x2="${x + 0.5}" y1="${top}" y2="${PM + h - PPAD + 8}" stroke="var(--line)"/>`
     })
     .join('')
-  const width = PANEL_W + 2 * PM
+  const width = panelW + 2 * PM
   const height = h + 2 * PM
 
   const source =
@@ -145,7 +137,7 @@ export const panelSvg = (cards: Card[]): Drawing => {
     </style>` +
     `<defs><filter id="sh" x="-5%" y="-10%" width="110%" height="130%">` +
     `<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity=".12"/></filter></defs>` +
-    `<rect x="${PM + 0.5}" y="${PM + 0.5}" width="${PANEL_W - 1}" height="${h - 1}" rx="12" fill="var(--bg)"` +
+    `<rect x="${PM + 0.5}" y="${PM + 0.5}" width="${panelW - 1}" height="${h - 1}" rx="12" fill="var(--bg)"` +
     ` stroke="var(--edge)" filter="url(#sh)"/>` +
     dividers +
     parts.join('') +
