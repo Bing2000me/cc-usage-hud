@@ -157,7 +157,7 @@ test('the terminal band shows the chips, and a pressed chip pins its card', asyn
   expect((await ui.find({ key: 'chip-stats' }))?.text).toMatch(/^◷ 1 轮 1 步 · \d+ tok\/s$/)
   expect((await ui.find({ key: 'chip-tokens' }))?.text).toBe('▦ 3.1K tok · 缓存命中 80%')
   expect((await ui.find({ key: 'chip-limits' }))?.text).toBe('◔ 限额 —')
-  expect((await ui.find({ key: 'chip-cost' }))?.text).toBe('◇ $0.00 · 今日 $0.00')
+  expect((await ui.find({ key: 'chip-cost' }))?.text).toBe('◇ $0.00 · 今日 $0.00 · 本周 $0.00')
   expect((await ui.find({ key: 'card-cost' }))?.props.display).toBe('none')
 
   await ui.press({ key: 'chip-cost' })
@@ -168,42 +168,29 @@ test('the terminal band shows the chips, and a pressed chip pins its card', asyn
   await ui.unmount()
 })
 
-test('the desktop band: a press on a chip opens its own panel above it', async ($, on) => {
+test('the desktop band shows three chips of figures, nothing to press', async ($, on) => {
   mock.clock(on, { now: T0 })
   await oneStep($, on)
-  const band = (bodyColumns: number, maxRows = 12) =>
-    $.ui.mount({ plugin: 'cc-usage-hud', surface: 'desktop', ...BAND, props: { ...BAND.props, bodyColumns, maxRows } })
-  const panels = async (ui: Awaited<ReturnType<typeof band>>) =>
-    (await ui.findAll({ type: 'Svg' })).map(s => String(s.props.alt)).filter(alt => /用量|统计|费用/.test(alt))
+  const band = (bodyColumns: number) =>
+    $.ui.mount({ plugin: 'cc-usage-hud', surface: 'desktop', ...BAND, props: { ...BAND.props, bodyColumns } })
 
   const wide = await band(120)
-  expect((await wide.find({ key: 'press-tokens' }))?.text).toBe('3.1K tok · 缓存命中 80%')
+  expect(await wide.find({ type: 'Text', text: '3.1K tok · 缓存命中 80%' })).toBeDefined()
+  expect(await wide.find({ type: 'Text', text: '$0.00 · 今日 $0.00 · 本周 $0.00' })).toBeDefined()
   // The desktop shows the plan's limits itself: no limits chip.
-  expect(await wide.find({ key: 'press-limits' })).toBe(undefined)
-  expect(await panels(wide)).toHaveLength(0)
-
-  await wide.press({ key: 'press-tokens' })
-  expect(await panels(wide)).toHaveLength(1)
-  const panel = (await wide.findAll({ type: 'Svg' })).find(s => String(s.props.alt).startsWith('Token 用量'))
-  expect(String(panel?.props.source)).toContain('2,400')
-  expect((await wide.find({ key: 'chip-tokens' }))?.props.backgroundColor).toBeDefined()
-
-  await wide.press({ key: 'press-cost' })
-  const [cost] = await panels(wide)
-  expect(cost?.startsWith('费用')).toBe(true)
-  await wide.press({ key: 'press-cost' })
-  expect(await panels(wide)).toHaveLength(0)
+  expect(await wide.find({ key: 'chip-limits' })).toBe(undefined)
+  expect(await wide.findAll({ type: 'Button' })).toHaveLength(0)
+  // Icons in the hidden flow copy and the live copy, the page layer, the drop spacer.
+  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(8)
   await wide.unmount()
 
   const mid = await band(62)
-  expect((await mid.find({ key: 'press-tokens' }))?.text).toBe('3.1K · 命中 80%')
+  expect(await mid.find({ type: 'Text', text: '3.1K · 命中 80%' })).toBeDefined()
   await mid.unmount()
 
-  // A band too short for the panel keeps the chips alone.
-  const short = await band(120, 3)
-  await short.press({ key: 'press-tokens' })
-  expect(await panels(short)).toHaveLength(0)
-  await short.unmount()
+  const small = await band(40)
+  expect(await small.find({ type: 'Text', text: '命中 80%' })).toBeDefined()
+  await small.unmount()
 })
 
 test('a narrow band steps down to shorter chips', async ($, on) => {

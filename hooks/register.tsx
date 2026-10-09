@@ -4,7 +4,7 @@ import type { FsEntry, Register, RenderNode, TurnUsage } from 'claude-code'
 import type { HudCard, HudLimit } from '../types'
 import * as F from './format'
 import { buildView, ORDER, pickTier } from './model'
-import { iconSvg, PAGE_SVG, panelSvg, spacerSvg } from './svg'
+import { iconSvg, PAGE_SVG, spacerSvg } from './svg'
 import { Ledger, parseJson, serial } from './ledger'
 import type { LedgerFile, LimitsCache } from './ledger'
 import { EMPTY_SNAP, EMPTY_STATS, EMPTY_TOTALS } from './state'
@@ -20,10 +20,8 @@ const tickAtom = atom({ plugin: 'cc-usage-hud', key: 'tick' } as const, 0)
 const USER_WAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const LIMITS_WRITE_EVERY_MS = 30_000
 const CARD_WIDTH = 40
-// The desktop band: CSS pixels per row and per column, and the smallest the panel is drawn.
+// The desktop band: CSS pixels per row.
 const DESKTOP_ROW_PX = 19
-const DESKTOP_COL_PX = 7.8
-const MIN_PANEL_SCALE = 0.7
 // How far the chips drop into the band's bottom padding, toward the prompt.
 const CHIP_DROP_PX = 8
 // The desktop's proportional text runs narrower than the cells cellWidth counts.
@@ -33,8 +31,6 @@ const CHIP_GAP = 2
 const PAGE_BLEED = 6
 // Cells a desktop chip adds to its label: the icon, its gap and the padding.
 const CHIP_CHROME = 5
-// Mid-gray at low alpha reads as a pill on both light and dark backgrounds.
-const CHIP_HOVER = 'rgba(128,128,128,0.18)'
 const GLYPH: Record<string, string> = { gauge: '◷', database: '▦', ring: '◔', timer: '◔', coin: '◇' }
 
 export const register: Register = on => {
@@ -275,16 +271,14 @@ export const register: Register = on => {
   })
 
   // Desktop: a row of chips in the band above the prompt, drawn on the page's own
-  // background. A press on a chip opens its panel right above it, set like the
-  // desktop's own usage popover; another press closes it. The band clips anything
-  // drawn outside it and grows with what it holds, so the panel is sized to fit.
+  // background and dropped toward the prompt. Figures only: the band clips what is
+  // drawn outside it, so no card could float over the conversation.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || e.surface !== 'desktop') return next(e)
-    const { Box, Svg, Button } = $.ui.resolve(e)
+    const { Box, Text, Svg } = $.ui.resolve(e)
     const s = await read($, statsAtom)
     const snap = await read($, snapAtom)
     const totals = await read($, totalsAtom)
-    const pinned = await read($, pinnedAtom)
     await read($, tickAtom)
     const now = await $.clock.now()
     const view = buildView(s, snap, totals, now, ledger.tzMin)
@@ -294,98 +288,29 @@ export const register: Register = on => {
     const fit = (text: string) => F.cellWidth(text) * DESKTOP_TEXT_FIT
     const tier = pickTier(chips, e.props.bodyColumns, label => fit(label) + CHIP_CHROME)
 
-    const openCard = chips.some(c => c.id === pinned) ? view.cards.find(c => c.id === pinned) : undefined
-    const drawing = openCard ? panelSvg([openCard]) : null
-    const roomPx = (e.props.maxRows - 1) * DESKTOP_ROW_PX - CHIP_DROP_PX
-    const scale = drawing ? Math.min(1, roomPx / drawing.height) : 0
-    const panel =
-      drawing && openCard && scale >= MIN_PANEL_SCALE
-        ? {
-            card: openCard,
-            source: drawing.source,
-            width: Math.round(drawing.width * scale),
-            height: Math.round(drawing.height * scale),
-          }
-        : null
-
-    // The panel sits over its chip: flush left over the first, centered over a middle
-    // one, flush right over the last, so it never leaves the band.
-    const anchor = (i: number, label: string, panelWidth: number) => {
-      if (i === 0) return { left: 0 }
-      if (i === chips.length - 1) return { right: 0 }
-      const chipCells = fit(label) + CHIP_CHROME
-      return { left: Math.round((chipCells - panelWidth / DESKTOP_COL_PX) / 2) }
-    }
-
     // Drawn twice: once in the flow, where it sizes the band and lies hidden under the
-    // page layer, and once on top of that layer, where it is seen and pressed.
-    const row = (isLive: boolean) =>
-      chips.map((chip, i) => {
-        const tag = isLive ? '' : '-flow'
-        const isOpen = pinned === chip.id
-        const label = chip.labels[tier]
-        const parts: RenderNode[] = [
-          <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={label} width={14} height={14} />,
-          <Button
-            key={`press-${chip.id}${tag}`}
-            label={label}
-            plain
-            dimColor
-            onPress={() => update($, pinnedAtom, p => (p === chip.id ? null : chip.id))}
-          />,
-        ]
-        if (isLive && isOpen && panel) {
-          const alt = [panel.card.title, panel.card.right, ...panel.card.meters.map(m => `${m.label} ${m.value}`), ...panel.card.rows.map(r => `${r.label} ${r.value}`)]
-            .filter(Boolean)
-            .join(', ')
-          parts.push(
-            <Box
-              key={`panel-${chip.id}`}
-              position="absolute"
-              bottom={1}
-              width={Math.ceil(panel.width / DESKTOP_COL_PX)}
-              {...anchor(i, label, panel.width)}
-            >
-              <Svg source={panel.source} alt={alt} width={panel.width} height={panel.height} />
-            </Box>,
-          )
-        }
-        return (
-          <Box
-            key={`chip-${chip.id}${tag}`}
-            flexDirection="row"
-            alignItems="center"
-            columnGap={1}
-            paddingX={1}
-            {...(isOpen ? { backgroundColor: CHIP_HOVER } : {})}
-            hover={{ backgroundColor: CHIP_HOVER }}
-          >
-            {parts}
+    // page layer, and once on top of that layer, where it is seen.
+    const row = (tag: string) => (
+      <Box flexDirection="row" justifyContent="center" columnGap={1}>
+        {chips.map(chip => (
+          <Box key={`chip-${chip.id}${tag}`} flexDirection="row" alignItems="center" columnGap={1} paddingX={1}>
+            <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={chip.labels[tier]} width={14} height={14} />
+            <Text dimColor wrap="truncate-end">
+              {chip.labels[tier]}
+            </Text>
           </Box>
-        )
-      })
-
-    // The open panel's room, in the flow; the live row drops into the band's bottom
-    // padding by less than a cell, to sit closer to the prompt.
-    const room: RenderNode[] = panel
-      ? [<Svg source={spacerSvg(panel.height)} alt="room" width={1} height={panel.height} />]
-      : []
+        ))}
+      </Box>
+    )
 
     return (
       <Box flexDirection="column">
-        <Box flexDirection="column">
-          {room}
-          <Box flexDirection="row" justifyContent="center" columnGap={1}>
-            {row(false)}
-          </Box>
-        </Box>
+        {row('-flow')}
         <Box position="absolute" top={-PAGE_BLEED} left={-PAGE_BLEED} right={-PAGE_BLEED} bottom={-PAGE_BLEED}>
           <Svg source={PAGE_SVG} alt="page" width={4000} height={1600} />
         </Box>
         <Box position="absolute" left={0} right={0} bottom={-1} flexDirection="column">
-          <Box flexDirection="row" justifyContent="center" columnGap={1}>
-            {row(true)}
-          </Box>
+          {row('')}
           <Svg source={spacerSvg(DESKTOP_ROW_PX - CHIP_DROP_PX)} alt="room" width={1} height={DESKTOP_ROW_PX - CHIP_DROP_PX} />
         </Box>
       </Box>

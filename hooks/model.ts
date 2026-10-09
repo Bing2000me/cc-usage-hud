@@ -65,7 +65,8 @@ export const buildView = (
   const tpsShort = mainTps === null ? '—' : `${Math.round(mainTps)} tok/s`
   const hasLimits = snap.limits.length > 0
   const limitsText = `5h ${pctText(fivePct)} · 7d ${pctText(sevenPct)}`
-  const costText = `${F.fmtUsd(snap.costUsd ?? 0)} · 今日 ${F.fmtUsd(totals.today)}`
+  const costShort = `${F.fmtUsd(snap.costUsd ?? 0)} · 今日 ${F.fmtUsd(totals.today)}`
+  const costText = `${costShort} · 本周 ${F.fmtUsd(totals.week)}`
 
   const chips: Chip[] = [
     {
@@ -87,7 +88,7 @@ export const buildView = (
     {
       id: 'cost',
       icon: 'coin',
-      labels: [costText, costText, F.fmtUsd(snap.costUsd ?? 0)],
+      labels: [costText, costShort, F.fmtUsd(snap.costUsd ?? 0)],
     },
   ]
 
