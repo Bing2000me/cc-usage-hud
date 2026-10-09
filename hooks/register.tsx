@@ -20,9 +20,13 @@ const tickAtom = atom({ plugin: 'cc-usage-hud', key: 'tick' } as const, 0)
 const USER_WAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const LIMITS_WRITE_EVERY_MS = 30_000
 const CARD_WIDTH = 40
+// The desktop band: CSS pixels per row, and the smallest a card may be drawn.
+const DESKTOP_ROW_PX = 19
+const MIN_CARD_SCALE = 0.75
+// The desktop's proportional text runs narrower than the cells cellWidth counts.
+const DESKTOP_TEXT_FIT = 0.88
 const CHIP_GAP = 2
-// Desktop footer: cells its own controls take, and what each chip adds to its label.
-const FOOTER_RESERVED = 48
+// Cells a desktop chip adds to its label: the icon, its gap and the padding.
 const CHIP_CHROME = 5
 // Mid-gray at low alpha reads as a pill on both light and dark backgrounds.
 const CHIP_HOVER = 'rgba(128,128,128,0.18)'
@@ -265,9 +269,11 @@ export const register: Register = on => {
     return { result: `cc-usage-hud reloaded; pinned: ${pin ?? 'none'}` }
   })
 
-  // Desktop: chips in the prompt footer, each with a card that floats above it on hover.
-  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
-    if (e.surface !== 'desktop') return next(e)
+  // Desktop: a row of chips in the band above the prompt. Hovering a chip opens its card
+  // in the band, above the chips; the band's own region clips anything drawn outside it,
+  // so the card is laid out in the band and sized to fit, which keeps the chips in place.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey || e.surface !== 'desktop') return next(e)
     const { Box, Text, Svg } = $.ui.resolve(e)
     const s = await read($, statsAtom)
     const snap = await read($, snapAtom)
@@ -277,45 +283,57 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const view = buildView(s, snap, totals, now, ledger.tzMin)
 
-    const children: RenderNode[] = []
-    if (e.props.modes.length > 0) children.push(<Text dimColor>{e.props.modes.join(' & ')}</Text>)
-    // The footer shares its row with the engine's own controls: leave them room.
-    const room = (e.viewport?.columns ?? 120) - FOOTER_RESERVED
-    const tier = pickTier(view.chips, room, label => F.cellWidth(label) + CHIP_CHROME)
-    for (const chip of view.chips) {
-      const card = view.cards.find(c => c.id === chip.id)
-      if (!card) continue
+    const tier = pickTier(view.chips, e.props.bodyColumns, label => F.cellWidth(label) * DESKTOP_TEXT_FIT + CHIP_CHROME)
+    // Room the card may take: the band's rows less the chips' own.
+    const roomPx = (e.props.maxRows - 1) * DESKTOP_ROW_PX - 4
+
+    const cards = view.cards.map(card => {
       const drawing = cardSvg(card)
-      const isPinned = pinned === chip.id
+      const scale = Math.min(1, roomPx / drawing.height)
+      if (scale < MIN_CARD_SCALE) return <Box key={`card-${card.id}`} display="none" />
+      const isPinned = pinned === card.id
+      const scope = `hud-${card.id}`
       const alt = [card.title, card.right, ...card.rows.map(r => `${r.label} ${r.value}`)].filter(Boolean).join(', ')
-      children.push(
+      return (
         <Box
-          key={`chip-${chip.id}`}
+          key={`card-${card.id}`}
+          display={isPinned ? 'flex' : 'none'}
+          hover={isPinned ? { scope } : { scope, display: 'flex' }}
           flexDirection="row"
-          alignItems="center"
-          columnGap={1}
-          paddingX={1}
-          hover={{ backgroundColor: CHIP_HOVER }}
+          justifyContent="center"
         >
-          <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt="" width={14} height={14} />
-          <Text dimColor hover={{ dimColor: false }} wrap="truncate-end">
-            {chip.labels[tier]}
-          </Text>
-          <Box
-            position="absolute"
-            bottom={1}
-            right={0}
-            display={isPinned ? 'flex' : 'none'}
-            {...(isPinned ? {} : { hover: { display: 'flex' as const } })}
-          >
-            <Svg source={drawing.source} alt={alt} width={drawing.width} height={drawing.height} />
-          </Box>
-        </Box>,
+          <Svg
+            source={drawing.source}
+            alt={alt}
+            width={Math.round(drawing.width * scale)}
+            height={Math.round(drawing.height * scale)}
+          />
+        </Box>
       )
-    }
+    })
+
+    const chips = view.chips.map(chip => (
+      <Box
+        key={`chip-${chip.id}`}
+        flexDirection="row"
+        alignItems="center"
+        columnGap={1}
+        paddingX={1}
+        hover={{ scope: `hud-${chip.id}`, backgroundColor: CHIP_HOVER }}
+      >
+        <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={chip.labels[tier]} width={14} height={14} />
+        <Text dimColor hover={{ scope: `hud-${chip.id}`, dimColor: false }} wrap="truncate-end">
+          {chip.labels[tier]}
+        </Text>
+      </Box>
+    ))
+
     return (
-      <Box flexDirection="row" alignItems="center" columnGap={1}>
-        {children}
+      <Box flexDirection="column">
+        {cards}
+        <Box flexDirection="row" justifyContent="center" columnGap={1}>
+          {chips}
+        </Box>
       </Box>
     )
   })

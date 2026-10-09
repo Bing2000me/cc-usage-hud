@@ -162,7 +162,7 @@ export const buildView = (
         { label: '本月', value: F.fmtUsd(totals.month) },
       ],
       meters: [],
-      foot: ['与 /cost 同口径；订阅账号为等价费用', ...(totals.since ? [`今日 / 本周 / 本月自 ${totals.since} 起累计`] : [])],
+      foot: ['与 /cost 同口径，订阅为等价费用', ...(totals.since ? [`累计自 ${totals.since.slice(5).replace('-', '/')} 起`] : [])],
     },
   ]
 

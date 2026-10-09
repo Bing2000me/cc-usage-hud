@@ -168,25 +168,29 @@ test('the terminal band shows the chips, and a pressed chip pins its card', asyn
   await ui.unmount()
 })
 
-test('the desktop footer shows the chips, each with a hidden card', async ($, on) => {
+test('the desktop band shows the chips, each with a card that opens above them', async ($, on) => {
   mock.clock(on, { now: T0 })
   await oneStep($, on)
-  const footer = { plugin: 'cc-usage-hud', surface: 'desktop' as const, component: 'SessionMode' as const, props: { modes: ['focus'] } }
-  const wide = await $.ui.mount({ ...footer, viewport: { columns: 200, rows: 50 } })
-  expect(await wide.find({ type: 'Text', text: '3.1K tok · 缓存命中 80%' })).toBeDefined()
-  await wide.unmount()
-  const narrow = await $.ui.mount({ ...footer, viewport: { columns: 100, rows: 50 } })
-  expect(await narrow.find({ type: 'Text', text: '命中 80%' })).toBeDefined()
-  await narrow.unmount()
+  const band = (bodyColumns: number, maxRows = 12) =>
+    $.ui.mount({ plugin: 'cc-usage-hud', surface: 'desktop', ...BAND, props: { ...BAND.props, bodyColumns, maxRows } })
 
-  const ui = await $.ui.mount({ ...footer, viewport: { columns: 130, rows: 50 } })
-  expect(await ui.find({ type: 'Text', text: 'focus' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '3.1K · 命中 80%' })).toBeDefined()
-  const svgs = await ui.findAll({ type: 'Svg' })
+  const wide = await band(120)
+  expect(await wide.find({ type: 'Text', text: '3.1K tok · 缓存命中 80%' })).toBeDefined()
+  const svgs = await wide.findAll({ type: 'Svg' })
   expect(svgs).toHaveLength(8)
   const card = svgs.find(s => String(s.props.alt).startsWith('Token 用量'))
   expect(String(card?.props.source)).toContain('3,060 tok')
-  await ui.unmount()
+  expect((await wide.find({ key: 'card-tokens' }))?.props.display).toBe('none')
+  await wide.unmount()
+
+  const mid = await band(70)
+  expect(await mid.find({ type: 'Text', text: '3.1K · 命中 80%' })).toBeDefined()
+  await mid.unmount()
+
+  // A band too short for any card draws the chips alone.
+  const short = await band(120, 4)
+  expect(await short.findAll({ type: 'Svg' })).toHaveLength(4)
+  await short.unmount()
 })
 
 test('a narrow band steps down to shorter chips', async ($, on) => {
