@@ -20,15 +20,15 @@ const tickAtom = atom({ plugin: 'cc-usage-hud', key: 'tick' } as const, 0)
 const USER_WAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const LIMITS_WRITE_EVERY_MS = 30_000
 const CARD_WIDTH = 40
-// The desktop band: CSS pixels per row.
+// The desktop band, in CSS pixels (measured on the app): a row, and the band box's
+// padding above and below it. The chips hang CHIP_LIFT_PX below a point one row above
+// the row: 14px under the tray's top, 7px over its bottom.
 const DESKTOP_ROW_PX = 19
-// How far the chips drop into the band's bottom padding, toward the prompt.
-const CHIP_DROP_PX = 8
+const TRAY_PAD_PX = 10.5
+const CHIP_LIFT_PX = 22.5
 // The desktop's proportional text runs narrower than the cells cellWidth counts.
 const DESKTOP_TEXT_FIT = 0.88
 const CHIP_GAP = 2
-// Cells the page layer reaches past the band's body on every side, over its tray.
-const PAGE_BLEED = 6
 // Cells a desktop chip adds to its label: the icon, its gap and the padding.
 const CHIP_CHROME = 5
 const GLYPH: Record<string, string> = { gauge: '◷', database: '▦', ring: '◔', timer: '◔', coin: '◇' }
@@ -288,12 +288,10 @@ export const register: Register = on => {
     const fit = (text: string) => F.cellWidth(text) * DESKTOP_TEXT_FIT
     const tier = pickTier(chips, e.props.bodyColumns, label => fit(label) + CHIP_CHROME)
 
-    // Drawn twice: once in the flow, where it sizes the band and lies hidden under the
-    // page layer, and once on top of that layer, where it is seen.
-    const row = (tag: string) => (
+    const row = (
       <Box flexDirection="row" justifyContent="center" columnGap={1}>
         {chips.map(chip => (
-          <Box key={`chip-${chip.id}${tag}`} flexDirection="row" alignItems="center" columnGap={1} paddingX={1}>
+          <Box key={`chip-${chip.id}`} flexDirection="row" alignItems="center" columnGap={1} paddingX={1}>
             <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={chip.labels[tier]} width={14} height={14} />
             <Text dimColor wrap="truncate-end">
               {chip.labels[tier]}
@@ -303,15 +301,20 @@ export const register: Register = on => {
       </Box>
     )
 
+    // Measured on the app: the band's tray is 40px at least, of which only the band's
+    // own box (its 10.5px paddings around one row) can be drawn in. The page layer
+    // fills that box to its edges; nothing reaches past its bottom or right edge, which
+    // would let the band scroll under a swipe (past its top or left edge only clips).
+    const pageHeight = DESKTOP_ROW_PX + DESKTOP_ROW_PX + TRAY_PAD_PX
     return (
       <Box flexDirection="column">
-        {row('-flow')}
-        <Box position="absolute" top={-PAGE_BLEED} left={-PAGE_BLEED} right={-PAGE_BLEED} bottom={-PAGE_BLEED}>
-          <Svg source={PAGE_SVG} alt="page" width={4000} height={1600} />
+        <Svg source={spacerSvg(DESKTOP_ROW_PX)} alt="row" width={1} height={DESKTOP_ROW_PX} />
+        <Box position="absolute" top={-1} left={-1} right={-1} overflow="hidden">
+          <Svg source={PAGE_SVG} alt="page" width={4000} height={pageHeight} />
         </Box>
-        <Box position="absolute" left={0} right={0} bottom={-1} flexDirection="column">
-          {row('')}
-          <Svg source={spacerSvg(DESKTOP_ROW_PX - CHIP_DROP_PX)} alt="room" width={1} height={DESKTOP_ROW_PX - CHIP_DROP_PX} />
+        <Box position="absolute" top={-1} left={0} right={0} flexDirection="column">
+          <Svg source={spacerSvg(CHIP_LIFT_PX)} alt="lift" width={1} height={CHIP_LIFT_PX} />
+          {row}
         </Box>
       </Box>
     )

@@ -180,8 +180,8 @@ test('the desktop band shows three chips of figures, nothing to press', async ($
   // The desktop shows the plan's limits itself: no limits chip.
   expect(await wide.find({ key: 'chip-limits' })).toBe(undefined)
   expect(await wide.findAll({ type: 'Button' })).toHaveLength(0)
-  // Icons in the hidden flow copy and the live copy, the page layer, the drop spacer.
-  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(8)
+  // Three icons, the row that sizes the band, the page layer and the chips' lift.
+  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(6)
   await wide.unmount()
 
   const mid = await band(62)

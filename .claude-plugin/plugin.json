@@ -1,6 +1,6 @@
 {
   "name": "cc-usage-hud",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "A chip bar above the prompt: cache hit rate, rate limits, cost (session/day/week/month) and TPS, with hover cards.",
   "author": { "name": "Bing2000me" },
   "repository": "https://github.com/Bing2000me/cc-usage-hud",
