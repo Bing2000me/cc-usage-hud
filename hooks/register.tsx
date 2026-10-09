@@ -4,7 +4,7 @@ import type { FsEntry, Register, RenderNode, TurnUsage } from 'claude-code'
 import type { HudCard, HudLimit } from '../types'
 import * as F from './format'
 import { buildView, ORDER, pickTier } from './model'
-import { iconSvg, PAGE_SVG, spacerSvg } from './svg'
+import { iconSvg } from './svg'
 import { Ledger, parseJson, serial } from './ledger'
 import type { LedgerFile, LimitsCache } from './ledger'
 import { EMPTY_SNAP, EMPTY_STATS, EMPTY_TOTALS } from './state'
@@ -20,12 +20,6 @@ const tickAtom = atom({ plugin: 'cc-usage-hud', key: 'tick' } as const, 0)
 const USER_WAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const LIMITS_WRITE_EVERY_MS = 30_000
 const CARD_WIDTH = 40
-// The desktop band, in CSS pixels (measured on the app): a row, and the band box's
-// padding above and below it. The chips hang CHIP_LIFT_PX below a point one row above
-// the row: 14px under the tray's top, 7px over its bottom.
-const DESKTOP_ROW_PX = 19
-const TRAY_PAD_PX = 10.5
-const CHIP_LIFT_PX = 22.5
 // The desktop's proportional text runs narrower than the cells cellWidth counts.
 const DESKTOP_TEXT_FIT = 0.88
 const CHIP_GAP = 2
@@ -270,9 +264,9 @@ export const register: Register = on => {
     return { result: `cc-usage-hud reloaded; pinned: ${pin ?? 'none'}` }
   })
 
-  // Desktop: a row of chips in the band above the prompt, drawn on the page's own
-  // background and dropped toward the prompt. Figures only: the band clips what is
-  // drawn outside it, so no card could float over the conversation.
+  // Desktop: a row of chips in the band above the prompt, in the band's own gray tray,
+  // as the app's own bars sit. Figures only: the band clips what is drawn outside it,
+  // and no element takes a tooltip, so nothing could float over the conversation.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || e.surface !== 'desktop') return next(e)
     const { Box, Text, Svg } = $.ui.resolve(e)
@@ -288,7 +282,7 @@ export const register: Register = on => {
     const fit = (text: string) => F.cellWidth(text) * DESKTOP_TEXT_FIT
     const tier = pickTier(chips, e.props.bodyColumns, label => fit(label) + CHIP_CHROME)
 
-    const row = (
+    return (
       <Box flexDirection="row" justifyContent="center" columnGap={1}>
         {chips.map(chip => (
           <Box key={`chip-${chip.id}`} flexDirection="row" alignItems="center" columnGap={1} paddingX={1}>
@@ -298,24 +292,6 @@ export const register: Register = on => {
             </Text>
           </Box>
         ))}
-      </Box>
-    )
-
-    // Measured on the app: the band's tray is 40px at least, of which only the band's
-    // own box (its 10.5px paddings around one row) can be drawn in. The page layer
-    // fills that box to its edges; nothing reaches past its bottom or right edge, which
-    // would let the band scroll under a swipe (past its top or left edge only clips).
-    const pageHeight = DESKTOP_ROW_PX + DESKTOP_ROW_PX + TRAY_PAD_PX
-    return (
-      <Box flexDirection="column">
-        <Svg source={spacerSvg(DESKTOP_ROW_PX)} alt="row" width={1} height={DESKTOP_ROW_PX} />
-        <Box position="absolute" top={-1} left={-1} right={-1} overflow="hidden">
-          <Svg source={PAGE_SVG} alt="page" width={4000} height={pageHeight} />
-        </Box>
-        <Box position="absolute" top={-1} left={0} right={0} flexDirection="column">
-          <Svg source={spacerSvg(CHIP_LIFT_PX)} alt="lift" width={1} height={CHIP_LIFT_PX} />
-          {row}
-        </Box>
       </Box>
     )
   })

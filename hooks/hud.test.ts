@@ -180,8 +180,8 @@ test('the desktop band shows three chips of figures, nothing to press', async ($
   // The desktop shows the plan's limits itself: no limits chip.
   expect(await wide.find({ key: 'chip-limits' })).toBe(undefined)
   expect(await wide.findAll({ type: 'Button' })).toHaveLength(0)
-  // Three icons, the row that sizes the band, the page layer and the chips' lift.
-  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(6)
+  // Three icons, and nothing else drawn: the band's own tray shows.
+  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(3)
   await wide.unmount()
 
   const mid = await band(62)

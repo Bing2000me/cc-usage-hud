@@ -1,4 +1,4 @@
-// The desktop's drawings: chip icons and the page layer, as SVG markup.
+// The desktop's drawings: the chip icons, as SVG markup.
 // Colors follow the system appearance through prefers-color-scheme.
 
 import type { Icon } from './model'
@@ -35,20 +35,6 @@ const glyph = (icon: Icon, ring: number | null | undefined): string => {
     }
   }
 }
-
-/**
- * The desktop page's own background, in both appearances (sampled from the app,
- * in sRGB): laid under the band so its gray tray disappears and the chips and
- * cards sit on the page itself.
- */
-export const PAGE_SVG =
-  `<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="1600">` +
-  `<style>rect{fill:#fcfcfb}@media (prefers-color-scheme: dark){rect{fill:#151515}}</style>` +
-  `<rect width="4000" height="1600"/></svg>`
-
-/** Empty room `height` CSS pixels tall: what nudges a row by less than a cell. */
-export const spacerSvg = (height: number) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="${height}" viewBox="0 0 1 ${height}"></svg>`
 
 /** A chip's icon at `size` CSS pixels. */
 export const iconSvg = (icon: Icon, size: number, ring?: number | null): string =>
