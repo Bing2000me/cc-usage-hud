@@ -96,23 +96,18 @@ export const buildView = (
     },
   ]
 
-  const ctx =
-    snap.ctxPercent !== null && snap.ctxTokens !== null && snap.ctxWindow !== null
-      ? [{ label: '上下文已用', value: `${snap.ctxPercent}% · ${F.fmtTok(snap.ctxTokens)} / ${F.fmtTok(snap.ctxWindow)}` }]
-      : []
-
   const cards: Card[] = [
     {
       id: 'stats',
       icon: 'gauge',
       title: '会话统计',
-      right: '',
+      right: `${s.turns} 轮 · ${s.steps} 步`,
+      isRightQuiet: true,
       rows: [
         { label: '模型用时', value: F.fmtDur(s.modelMs) },
         { label: '工具调用用时', value: F.fmtDur(s.toolMs) },
         { label: '首 token 平均（TTFT）', value: s.ttftN > 0 ? F.fmtDur(s.ttftMs / s.ttftN) : '—' },
         { label: '输出速度（TPS）', value: tpsText(mainTps) },
-        { label: '最近一次', value: tpsText(s.lastTps), tone: 'dim' },
         ...(s.subSteps > 0 ? [{ label: '子代理', value: `${s.subSteps} 步 · ${tpsText(subTps)}` }] : []),
       ],
       meters: [],
@@ -122,16 +117,15 @@ export const buildView = (
       id: 'tokens',
       icon: 'database',
       title: 'Token 用量',
-      right: `${F.fmtInt(totalTok)} tok`,
+      right: `${F.fmtTok(totalTok)} tok`,
+      isRightQuiet: true,
       rows: [
-        { label: '缓存命中', value: hitText },
-        { label: '未缓存输入', value: `${F.fmtInt(s.input)} tok` },
-        { label: '缓存写入', value: `${F.fmtInt(s.cacheWrite)} tok` },
-        { label: '缓存读取', value: `${F.fmtInt(s.cacheRead)} tok` },
-        { label: '输出', value: `${F.fmtInt(s.output)} tok` },
-        ...ctx,
+        { label: '未缓存输入', value: F.fmtInt(s.input) },
+        { label: '缓存写入', value: F.fmtInt(s.cacheWrite) },
+        { label: '缓存读取', value: F.fmtInt(s.cacheRead) },
+        { label: '输出', value: F.fmtInt(s.output) },
       ],
-      meters: [],
+      meters: [{ label: '缓存命中', pct: hit, value: hitText, note: '', tone: 'ok' }],
       foot: ['含子代理 · 命中率 = 缓存读取 ÷ 全部输入'],
     },
     {
@@ -158,7 +152,7 @@ export const buildView = (
       id: 'cost',
       icon: 'coin',
       title: '费用',
-      right: '按 API 标价折算',
+      right: `按 API 标价${totals.since ? ` · 自 ${totals.since.slice(5).replace('-', '/')} 起` : ''}`,
       isRightQuiet: true,
       rows: [
         { label: '本会话', value: F.fmtUsd(snap.costUsd ?? 0) },
@@ -189,9 +183,6 @@ export const buildView = (
         { label: '缓存写入', value: F.fmtTok(s.cacheWrite) },
         { label: '缓存读取', value: F.fmtTok(s.cacheRead) },
         { label: '输出', value: F.fmtTok(s.output) },
-        ...(snap.ctxPercent !== null && snap.ctxTokens !== null && snap.ctxWindow !== null
-          ? [{ label: '上下文', value: `${snap.ctxPercent}%`, note: `${F.fmtTok(snap.ctxTokens)} / ${F.fmtTok(snap.ctxWindow)}` }]
-          : []),
       ],
     },
     {

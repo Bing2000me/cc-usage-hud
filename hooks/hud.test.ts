@@ -168,23 +168,33 @@ test('the terminal band shows the chips, and a pressed chip pins its card', asyn
   await ui.unmount()
 })
 
-test('the desktop band shows the chips, each opening one line of detail', async ($, on) => {
+test('the desktop band: chips, a detail line on hover, the panel on a press', async ($, on) => {
   mock.clock(on, { now: T0 })
   await oneStep($, on)
   const band = (bodyColumns: number, maxRows = 12) =>
     $.ui.mount({ plugin: 'cc-usage-hud', surface: 'desktop', ...BAND, props: { ...BAND.props, bodyColumns, maxRows } })
 
   const wide = await band(120)
-  expect(await wide.find({ type: 'Text', text: '3.1K tok · 缓存命中 80%' })).toBeDefined()
+  expect((await wide.find({ key: 'press-tokens' }))?.text).toBe('3.1K tok · 缓存命中 80%')
+  // The desktop shows the plan's limits itself: no limits chip.
+  expect(await wide.find({ key: 'press-limits' })).toBe(undefined)
   // Icons in the hidden flow copy and the live copy, and the page layer.
-  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(9)
+  expect(await wide.findAll({ type: 'Svg' })).toHaveLength(7)
   expect((await wide.find({ key: 'strip-tokens' }))?.props.display).toBe('none')
   expect(await wide.find({ type: 'Text', text: '缓存读取' })).toBeDefined()
-  expect(await wide.find({ type: 'Text', text: '按 API 标价折算' })).toBeDefined()
+
+  await wide.press({ key: 'press-tokens' })
+  const panel = (await wide.findAll({ type: 'Svg' })).find(s => String(s.props.alt).startsWith('会话统计'))
+  expect(String(panel?.props.source)).toContain('Token 用量')
+  expect(String(panel?.props.source)).toContain('2,400')
+  // While the panel is open the detail lines stand down.
+  expect(await wide.find({ type: 'Text', text: '缓存读取' })).toBe(undefined)
+  await wide.press({ key: 'press-cost' })
+  expect((await wide.findAll({ type: 'Svg' })).some(s => String(s.props.alt).startsWith('会话统计'))).toBe(false)
   await wide.unmount()
 
-  const mid = await band(70)
-  expect(await mid.find({ type: 'Text', text: '3.1K · 命中 80%' })).toBeDefined()
+  const mid = await band(62)
+  expect((await mid.find({ key: 'press-tokens' }))?.text).toBe('3.1K · 命中 80%')
   await mid.unmount()
 
   // A one-row band has no room for a detail line: the chips alone.

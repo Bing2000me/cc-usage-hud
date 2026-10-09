@@ -1,7 +1,7 @@
 // The desktop's drawings: chip icons, detail-line meters and the page layer, as SVG markup.
 // Colors follow the system appearance through prefers-color-scheme.
 
-import type { Icon, Tone } from './model'
+import type { Card, Icon, Tone } from './model'
 
 const PALETTE = `
   :root { --bg:#2a2a2d; --edge:rgba(255,255,255,.10); --fg:#ededf0; --mute:#9d9da3; --line:rgba(255,255,255,.08);
@@ -73,4 +73,83 @@ export const meterSvg = (pct: number | null, tone: Tone, width: number): string 
     (fill > 0 ? `<rect width="${fill.toFixed(1)}" height="6" rx="3" fill="${TONE[tone]}"/>` : '') +
     `</svg>`
   )
+}
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+const FONT = `-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Helvetica Neue', sans-serif`
+
+export type Drawing = { source: string; width: number; height: number }
+
+// The panel a chip's press opens, in CSS pixels: its cards side by side,
+// set the way the desktop's own usage popover is (gray headings, dark
+// labels, gray figures, blue meters).
+const PANEL_W = 720
+const PM = 6 // room for the shadow
+const PPAD = 16
+const PGAP = 32
+const PROW = 25
+const PMETER = 40
+
+export const panelSvg = (cards: Card[]): Drawing => {
+  const n = Math.max(1, cards.length)
+  const colW = (PANEL_W - 2 * PPAD - (n - 1) * PGAP) / n
+  const top = PM + PPAD
+  const parts: string[] = []
+  let bottom = top
+
+  cards.forEach((card, i) => {
+    const x0 = PM + PPAD + i * (colW + PGAP)
+    const x1 = x0 + colW
+    let y = top
+    parts.push(`<text class="head" x="${x0}" y="${y + 12}">${esc(card.title)}</text>`)
+    if (card.right) parts.push(`<text class="head r" x="${x1}" y="${y + 12}">${esc(card.right)}</text>`)
+    y += 24
+    for (const m of card.meters) {
+      parts.push(`<text class="label" x="${x0}" y="${y + 15}">${esc(m.label)}</text>`)
+      parts.push(`<text class="value r" x="${x1}" y="${y + 15}">${esc(m.value)}</text>`)
+      parts.push(`<rect x="${x0}" y="${y + 24}" width="${colW}" height="6" rx="3" fill="var(--track)"/>`)
+      if (m.pct !== null && m.pct > 0) {
+        const fw = Math.max(6, Math.min(colW, (m.pct / 100) * colW))
+        parts.push(`<rect x="${x0}" y="${y + 24}" width="${fw.toFixed(1)}" height="6" rx="3" fill="${TONE[m.tone]}"/>`)
+      }
+      y += PMETER
+    }
+    for (const row of card.rows) {
+      parts.push(`<text class="label" x="${x0}" y="${y + 16}">${esc(row.label)}</text>`)
+      parts.push(`<text class="value r" x="${x1}" y="${y + 16}">${esc(row.value)}</text>`)
+      y += PROW
+    }
+    bottom = Math.max(bottom, y)
+  })
+
+  const h = bottom - PM + PPAD - 8
+  const dividers = cards
+    .slice(1)
+    .map((_, i) => {
+      const x = PM + PPAD + (i + 1) * (colW + PGAP) - PGAP / 2
+      return `<line x1="${x + 0.5}" x2="${x + 0.5}" y1="${top}" y2="${PM + h - PPAD + 8}" stroke="var(--line)"/>`
+    })
+    .join('')
+  const width = PANEL_W + 2 * PM
+  const height = h + 2 * PM
+
+  const source =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
+    `<style>${PALETTE}
+      text { font-family: ${FONT}; font-variant-numeric: tabular-nums; }
+      .head { font-size: 12.5px; fill: var(--mute); }
+      .label { font-size: 13px; fill: var(--fg); }
+      .value { font-size: 13px; fill: var(--mute); }
+      .r { text-anchor: end; }
+    </style>` +
+    `<defs><filter id="sh" x="-5%" y="-10%" width="110%" height="130%">` +
+    `<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000" flood-opacity=".12"/></filter></defs>` +
+    `<rect x="${PM + 0.5}" y="${PM + 0.5}" width="${PANEL_W - 1}" height="${h - 1}" rx="12" fill="var(--bg)"` +
+    ` stroke="var(--edge)" filter="url(#sh)"/>` +
+    dividers +
+    parts.join('') +
+    `</svg>`
+
+  return { source, width, height }
 }

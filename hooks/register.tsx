@@ -5,7 +5,7 @@ import type { HudCard, HudLimit } from '../types'
 import * as F from './format'
 import { buildView, ORDER, pickTier } from './model'
 import type { Strip, StripItem, Tone } from './model'
-import { iconSvg, meterSvg, PAGE_SVG } from './svg'
+import { iconSvg, meterSvg, PAGE_SVG, panelSvg } from './svg'
 import { Ledger, parseJson, serial } from './ledger'
 import type { LedgerFile, LimitsCache } from './ledger'
 import { EMPTY_SNAP, EMPTY_STATS, EMPTY_TOTALS } from './state'
@@ -21,6 +21,10 @@ const tickAtom = atom({ plugin: 'cc-usage-hud', key: 'tick' } as const, 0)
 const USER_WAIT_TOOLS = new Set(['AskUserQuestion', 'ExitPlanMode'])
 const LIMITS_WRITE_EVERY_MS = 30_000
 const CARD_WIDTH = 40
+// The desktop band: CSS pixels per row and per column, and the smallest the panel is drawn.
+const DESKTOP_ROW_PX = 19
+const DESKTOP_COL_PX = 7.8
+const MIN_PANEL_SCALE = 0.7
 // A detail line's meters, in CSS pixels and in the cells they take; cells between figures.
 const METER_PX = 36
 const METER_CELLS = 5
@@ -49,7 +53,7 @@ export const register: Register = on => {
       await $.tool
         .register({
           name: 'hud_dev',
-          description: 'Dev only: reloads the cc-usage-hud mod and pins one of its cards open (stats, tokens, limits, cost, or none).',
+          description: 'Dev only: reloads the cc-usage-hud mod and opens its detail for one chip (stats, tokens, limits, cost, or none).',
           inputSchema: {
             type: 'object',
             properties: { pin: { type: 'string', enum: ['stats', 'tokens', 'limits', 'cost', 'none'] } },
@@ -279,14 +283,21 @@ export const register: Register = on => {
   // it takes from the conversation, and the chips never move under the pointer.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || e.surface !== 'desktop') return next(e)
-    const { Box, Text, Svg } = $.ui.resolve(e)
+    const { Box, Text, Svg, Button } = $.ui.resolve(e)
     const s = await read($, statsAtom)
     const snap = await read($, snapAtom)
     const totals = await read($, totalsAtom)
     const pinned = await read($, pinnedAtom)
     await read($, tickAtom)
     const now = await $.clock.now()
-    const view = buildView(s, snap, totals, now, ledger.tzMin)
+    const full = buildView(s, snap, totals, now, ledger.tzMin)
+    // The desktop shows the plan's limits itself, beside the model picker.
+    const isShown = (id: HudCard) => id !== 'limits'
+    const view = {
+      chips: full.chips.filter(c => isShown(c.id)),
+      cards: full.cards.filter(c => isShown(c.id)),
+      strips: full.strips.filter(st => isShown(st.id)),
+    }
 
     const cols = e.props.bodyColumns
     const fit = (text: string) => F.cellWidth(text) * DESKTOP_TEXT_FIT
@@ -309,6 +320,17 @@ export const register: Register = on => {
 
     const tone = (t: Tone | undefined) => (t === 'bad' ? 'error' : t === 'warn' ? 'warning' : undefined)
 
+    // A press on any chip opens the panel of all its cards, set like the desktop's own
+    // usage popover; it is laid out in the band, so it is drawn only where it fits.
+    const isOpen = pinned !== null
+    const panel = panelSvg(view.cards)
+    const roomPx = (e.props.maxRows - 1) * DESKTOP_ROW_PX - 4
+    const scale = Math.min(1, roomPx / panel.height, (cols * DESKTOP_COL_PX) / panel.width)
+    const isPanelShown = isOpen && scale >= MIN_PANEL_SCALE
+    const panelAlt = view.cards
+      .map(c => [c.title, ...c.meters.map(m => `${m.label} ${m.value}`), ...c.rows.map(r => `${r.label} ${r.value}`)].join(' '))
+      .join('; ')
+
     // Drawn twice: once in the flow, where it sizes the band and lies hidden under the
     // page layer, and once on top of that layer, where it is seen and hovered. Both
     // copies share the hover groups, so they open and close together.
@@ -316,7 +338,7 @@ export const register: Register = on => {
       const tag = isLive ? '' : '-flow'
       const strips = view.strips.map(strip => {
         const scope = `hud-${strip.id}`
-        if (!hasRoom) return <Box key={`strip-${strip.id}${tag}`} display="none" />
+        if (!hasRoom || isOpen) return <Box key={`strip-${strip.id}${tag}`} display="none" />
         const { items, withNote } = fitStrip(strip)
         const parts: RenderNode[] = items.map(it => {
           const bits: RenderNode[] = [<Text dimColor>{it.label}</Text>]
@@ -364,13 +386,31 @@ export const register: Register = on => {
           hover={isLive ? { scope: `hud-${chip.id}`, backgroundColor: CHIP_HOVER } : { scope: `hud-${chip.id}` }}
         >
           <Svg source={iconSvg(chip.icon, 14, chip.ring)} alt={chip.labels[tier]} width={14} height={14} />
-          <Text dimColor hover={{ scope: `hud-${chip.id}`, dimColor: false }} wrap="truncate-end">
-            {chip.labels[tier]}
-          </Text>
+          <Button
+            key={`press-${chip.id}${tag}`}
+            label={chip.labels[tier]}
+            plain
+            dimColor
+            hover={{ scope: `hud-${chip.id}` }}
+            onPress={() => update($, pinnedAtom, p => (p === null ? chip.id : null))}
+          />
         </Box>
       ))
+      const opened: RenderNode[] = isPanelShown
+        ? [
+            <Box key={`panel${tag}`} flexDirection="row" justifyContent="center">
+              <Svg
+                source={panel.source}
+                alt={panelAlt}
+                width={Math.round(panel.width * scale)}
+                height={Math.round(panel.height * scale)}
+              />
+            </Box>,
+          ]
+        : []
       return (
         <Box flexDirection="column">
+          {opened}
           {strips}
           <Box flexDirection="row" justifyContent="center" columnGap={1}>
             {chips}
